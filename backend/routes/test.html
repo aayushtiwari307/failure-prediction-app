@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Test - Failure Prediction</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+    .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #333; text-align: center; }
+    button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin: 10px 5px; font-size: 16px; }
+    button:hover { background: #0056b3; }
+    button:disabled { background: #6c757d; cursor: not-allowed; }
+    #result { background: #f8f9fa; padding: 15px; border: 1px solid #ddd; border-radius: 4px; white-space: pre-wrap; font-family: monospace; margin-top: 20px; min-height: 50px; }
+    .success { border-color: #28a745; background: #d4edda; color: #155724; }
+    .error { border-color: #dc3545; background: #f8d7da; color: #721c24; }
+    .loading { color: #007bff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>API Test Dashboard</h1>
+    <p>Click the buttons to test your backend API at <code>http://localhost:5000</code>.</p>
+    <button onclick="sendTestData()">Send Test Data (POST /upload)</button>
+    <button onclick="getAllData()">Get All Stored Data (GET /all)</button>
+    <button onclick="getPrediction()">Get Prediction (POST /predict)</button>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    async function sendTestData() {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = 'Sending test data...';
+      resultDiv.className = 'loading';
+
+      try {
+        const response = await fetch('http://localhost:5000/api/data/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sensorValues: [25.5, 1.2, 3.4, 100]  // Sample: temp, vibration, pressure, usage
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        resultDiv.innerHTML = JSON.stringify(data, null, 2);
+        resultDiv.className = 'success';
+        console.log('Upload success:', data);
+      } catch (error) {
+        resultDiv.innerHTML = `Error: ${error.message}`;
+        resultDiv.className = 'error';
+        console.error('Upload error:', error);
+      }
+    }
+
+    async function getAllData() {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = 'Fetching all data...';
+      resultDiv.className = 'loading';
+
+      try {
+        const response = await fetch('http://localhost:5000/api/data/all');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        resultDiv.innerHTML = JSON.stringify(data, null, 2);
+        resultDiv.className = 'success';
+        console.log('All data:', data);
+      } catch (error) {
+        resultDiv.innerHTML = `Error: ${error.message}`;
+        resultDiv.className = 'error';
+        console.error('Fetch error:', error);
+      }
+    }
+
+    async function getPrediction() {
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = 'Getting prediction...';
+      resultDiv.className = 'loading';
+
+      try {
+        const response = await fetch('http://localhost:5000/api/data/predict', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sensorValues: [35, 1.5, 115, 95]  // Sample input for prediction
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        resultDiv.innerHTML = JSON.stringify(data, null, 2);
+        resultDiv.className = 'success';
+        console.log('Prediction success:', data);
+      } catch (error) {
+        resultDiv.innerHTML = `Error: ${error.message}`;
+        resultDiv.className = 'error';
+        console.error('Prediction error:', error);
+      }
+    }
+  </script>
+</body>
+</html>
