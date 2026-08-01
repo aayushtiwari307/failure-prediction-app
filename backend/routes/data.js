@@ -33,7 +33,8 @@ router.post('/predict', async (req, res) => {
       return res.status(400).json({ error: 'sensorValues must be an array' });
     }
 
-    const mlResponse = await axios.post('http://localhost:5001/predict', { sensorValues });
+    const ML_URL = process.env.ML_SERVICE_URL || 'http://localhost:5001';
+    const mlResponse = await axios.post(`${ML_URL}/predict`, { sensorValues });
 
     const prediction = mlResponse.data;
 
@@ -66,7 +67,7 @@ router.get('/all', async (req, res) => {
   }
 });
 
-// Clear all data - THIS IS THE IMPORTANT ONE
+// Clear all data
 router.delete('/all', async (req, res) => {
   try {
     const result = await Data.deleteMany({});

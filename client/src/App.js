@@ -6,6 +6,8 @@ import {
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function App() {
   const [sensorValues, setSensorValues] = useState({ temp: '', vibration: '', pressure: '', usage: '' });
   const [prediction, setPrediction] = useState(null);
@@ -34,7 +36,7 @@ function App() {
     setError('');
     try {
       const values = Object.values(sensorValues).map(Number);
-      await axios.post('http://localhost:5000/api/data/upload', { sensorValues: values });
+      await axios.post(`${API_BASE}/api/data/upload`, { sensorValues: values });
       alert('✅ Data uploaded successfully!');
       fetchStoredData();
       setSensorValues({ temp: '', vibration: '', pressure: '', usage: '' });
@@ -49,7 +51,7 @@ function App() {
     setError('');
     try {
       const values = Object.values(sensorValues).map(Number);
-      const response = await axios.post('http://localhost:5000/api/data/predict', { sensorValues: values });
+      const response = await axios.post(`${API_BASE}/api/data/predict`, { sensorValues: values });
       setPrediction(response.data);
       alert(`Failure Probability: ${(response.data.failureProbability * 100).toFixed(1)}% (${response.data.riskLevel})`);
       fetchStoredData();
@@ -62,7 +64,7 @@ function App() {
 
   const fetchStoredData = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/data/all');
+      const res = await axios.get(`${API_BASE}/api/data/all`);
       setStoredData(res.data.data || []);
     } catch (err) {
       setError('Failed to load history');
@@ -73,7 +75,7 @@ function App() {
     if (!window.confirm('⚠️ Delete ALL data from database permanently?')) return;
     setLoading(true);
     try {
-      await axios.delete('http://localhost:5000/api/data/all');
+      await axios.delete(`${API_BASE}/api/data/all`);
       setStoredData([]);
       setPrediction(null);
       alert('✅ All data cleared successfully!');
@@ -83,7 +85,6 @@ function App() {
     setLoading(false);
   };
 
-  // New: Export to CSV
   const exportToCSV = () => {
     if (storedData.length === 0) {
       alert("No data to export!");
@@ -128,7 +129,6 @@ function App() {
         Proactive Failure Prediction System
       </Typography>
 
-      {/* Input Section */}
       <Card elevation={3} sx={{ mb: 4 }}>
         <CardContent>
           <Typography variant="h5" gutterBottom>Enter Sensor Values</Typography>
@@ -160,7 +160,6 @@ function App() {
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
       {loading && <Alert severity="info" sx={{ mb: 3 }}>Processing...</Alert>}
 
-      {/* Latest Prediction */}
       {prediction && (
         <Card elevation={3} sx={{ mb: 4 }}>
           <CardContent>
@@ -184,7 +183,6 @@ function App() {
         </Card>
       )}
 
-      {/* Chart */}
       {storedData.length > 0 && (
         <Card elevation={3} sx={{ mb: 4 }}>
           <CardContent>
@@ -205,7 +203,7 @@ function App() {
       )}
 
       <Typography align="center" sx={{ mt: 4, color: '#666' }}>
-        Proactive Failure Prediction System • MERN + XGBoost + MongoDB
+        Proactive Failure Prediction System • MERN + RandomForest + MongoDB
       </Typography>
     </Container>
   );
