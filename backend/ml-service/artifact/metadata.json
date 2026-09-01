@@ -1,0 +1,247 @@
+{
+  "modelVersion": "ai4i-hgb-v1-20260830",
+  "modelType": "HistGradientBoostingClassifier",
+  "featureSchema": [
+    {
+      "name": "air_temperature_k",
+      "sourceColumn": "Air temperature [K]",
+      "type": "float",
+      "unit": "Kelvin",
+      "observedTrainingRange": [
+        295.3,
+        304.5
+      ]
+    },
+    {
+      "name": "process_temperature_k",
+      "sourceColumn": "Process temperature [K]",
+      "type": "float",
+      "unit": "Kelvin",
+      "observedTrainingRange": [
+        305.7,
+        313.8
+      ]
+    },
+    {
+      "name": "rotational_speed_rpm",
+      "sourceColumn": "Rotational speed [rpm]",
+      "type": "float",
+      "unit": "rpm",
+      "observedTrainingRange": [
+        1168,
+        2886
+      ]
+    },
+    {
+      "name": "torque_nm",
+      "sourceColumn": "Torque [Nm]",
+      "type": "float",
+      "unit": "Newton-meter",
+      "observedTrainingRange": [
+        3.8,
+        76.6
+      ]
+    },
+    {
+      "name": "tool_wear_min",
+      "sourceColumn": "Tool wear [min]",
+      "type": "float",
+      "unit": "minutes",
+      "observedTrainingRange": [
+        0,
+        253
+      ]
+    },
+    {
+      "name": "type",
+      "sourceColumn": "Type",
+      "type": "categorical",
+      "allowedValues": [
+        "L",
+        "M",
+        "H"
+      ]
+    }
+  ],
+  "inputValidationNote": "API-level range bounds (in the Flask service) are the observedTrainingRange values above, padded 5% and clipped at 0 where negative is meaningless. These represent the range the model has training evidence for, NOT physical/industry engineering limits.",
+  "preprocessing": "sklearn ColumnTransformer: StandardScaler on 5 numeric features, OneHotEncoder(handle_unknown=ignore) on Type. Fit only on training split, bundled inside the serialized Pipeline.",
+  "dataset": {
+    "name": "AI4I 2020 Predictive Maintenance Dataset",
+    "source": "UCI Machine Learning Repository (archive.ics.uci.edu/dataset/601)",
+    "nature": "Public benchmark dataset. Explicitly synthetic/simulated - NOT real industrial telemetry.",
+    "rows": 10000
+  },
+  "droppedColumns": {
+    "identifiers": [
+      "UDI",
+      "Product ID"
+    ],
+    "leakage": [
+      "TWF",
+      "HDF",
+      "PWF",
+      "OSF",
+      "RNF"
+    ],
+    "leakageReason": "These are components of the target definition (failure sub-modes whose logical OR determines Machine failure in 99.73% of rows) and are not available as legitimate pre-failure input at inference time."
+  },
+  "target": "Machine failure",
+  "predictionSemantics": "Point-in-time failure-state risk score for the observed operating snapshot, as labeled in AI4I 2020. The dataset does not encode a future time window, so this is NOT a 'probability of failure within N days/hours' claim.",
+  "trainingConfig": {
+    "randomSeed": 42,
+    "splitProtocol": "stratified 60/20/20 (train/val/test), two sequential train_test_split calls, random_state=42",
+    "splitSizes": {
+      "train": 6000,
+      "val": 2000,
+      "test": 2000
+    },
+    "hyperparameters": {
+      "max_iter": 300,
+      "learning_rate": 0.05,
+      "max_depth": 6
+    }
+  },
+  "modelSelection": {
+    "candidatesCompared": [
+      "dummy",
+      "logistic_regression",
+      "random_forest",
+      "xgboost",
+      "hist_gradient_boosting"
+    ],
+    "selectionMetric": "validation PR-AUC (accuracy not used - target is 96.6% negative class)",
+    "winner": "hist_gradient_boosting"
+  },
+  "validationMetrics_threshold_0.5": {
+    "roc_auc": 0.970474059188893,
+    "pr_auc": 0.8165576144714797,
+    "precision": 0.9038461538461539,
+    "recall": 0.6911764705882353,
+    "f1": 0.7833333333333333,
+    "note": "Unaffected by the shared-preprocessor bug below - computed immediately after fit, before any other pipeline touched the preprocessor."
+  },
+  "calibration": {
+    "attempted": [
+      "isotonic",
+      "sigmoid"
+    ],
+    "brierScores": {
+      "uncalibrated": 0.012410229755027917,
+      "isotonic": 0.013930850540891422,
+      "sigmoid": 0.013810402122144136
+    },
+    "conclusion": "Both calibration methods increased Brier score (worse). Model kept UNCALIBRATED. Application must present output as 'risk score', not 'calibrated probability'."
+  },
+  "orderAwareRobustnessCheck": {
+    "note": "UDI is a documented row identifier, not a timestamp; rows are independent simulated snapshots. This is a distribution-shift robustness check, NOT a temporal leakage test.",
+    "canonicalStratifiedPRAUC": 0.8165576144714797,
+    "orderAwarePRAUC": 0.6912238296845064,
+    "interpretation": "Performance degrades under UDI-ordered split by more than class-balance differences alone would predict. Reported as an open, unresolved finding - not claimed as proof of temporal dependency, not dismissed either."
+  },
+  "thresholdPolicy": {
+    "costAssumption": "False negative (missed failure) assumed 5x costlier than false positive (false alarm). Explicit modeling assumption, NOT a sourced business/industry figure.",
+    "tieBreakRule": [
+      "1. minimize expected cost = FN_count*ratio + FP_count*1",
+      "2. among cost ties, choose higher recall",
+      "3. among remaining ties, choose higher threshold"
+    ],
+    "sensitivityTable": [
+      {
+        "fnFpRatio": "1:1",
+        "threshold": 0.57,
+        "recall": 0.6912,
+        "precision": 0.9038,
+        "falsePositiveRate": 0.0026
+      },
+      {
+        "fnFpRatio": "2:1",
+        "threshold": 0.57,
+        "recall": 0.6912,
+        "precision": 0.9038,
+        "falsePositiveRate": 0.0026
+      },
+      {
+        "fnFpRatio": "5:1",
+        "threshold": 0.03,
+        "recall": 0.8824,
+        "precision": 0.5217,
+        "falsePositiveRate": 0.0285
+      },
+      {
+        "fnFpRatio": "10:1",
+        "threshold": 0.03,
+        "recall": 0.8824,
+        "precision": 0.5217,
+        "falsePositiveRate": 0.0285
+      }
+    ],
+    "selectedOperatingPoint": {
+      "note": "The project selected ONE operating point (5:1 assumption) as the active serving policy. This is a binary decision (below/at-or-above threshold), NOT a three-level LOW/MEDIUM/HIGH scheme. The 0.57 value above came from a different, mutually exclusive cost assumption (1:1/2:1) and is retained in sensitivityTable for transparency only - it is not used to classify risk. No experiment has validated combining 0.03 and 0.57 into a single three-tier policy; that would require its own study before being implemented.",
+      "threshold": 0.03,
+      "costRatioAssumed": 5,
+      "labels": {
+        "below": "NORMAL",
+        "atOrAbove": "ACTION_REQUIRED"
+      }
+    }
+  },
+  "finalTestMetrics": {
+    "thresholdUsed": 0.03,
+    "roc_auc": 0.98041499208379,
+    "pr_auc": 0.8079604704824951,
+    "precision": 0.49557522123893805,
+    "recall": 0.8235294117647058,
+    "f1": 0.6187845303867403,
+    "confusionMatrix": {
+      "tn": 1875,
+      "fp": 57,
+      "fn": 12,
+      "tp": 56
+    },
+    "recall95CI": [
+      0.726027397260274,
+      0.9117647058823529
+    ],
+    "precision95CI": [
+      0.40707964601769914,
+      0.5856153674335491
+    ],
+    "nTestPositives": 68
+  },
+  "permutationImportance": {
+    "note": "Sanity check only - NOT a causal claim. Method: sklearn permutation_importance, scoring=average_precision, n_repeats=20, on canonical validation set.",
+    "ranking": [
+      {
+        "feature": "Air temperature [K]",
+        "importanceMean": 0.518344
+      },
+      {
+        "feature": "Torque [Nm]",
+        "importanceMean": 0.494411
+      },
+      {
+        "feature": "Rotational speed [rpm]",
+        "importanceMean": 0.426416
+      },
+      {
+        "feature": "Tool wear [min]",
+        "importanceMean": 0.370974
+      },
+      {
+        "feature": "Process temperature [K]",
+        "importanceMean": 0.311413
+      },
+      {
+        "feature": "Type",
+        "importanceMean": 0.021194
+      }
+    ]
+  },
+  "reproducibilityBugFixed": "An earlier draft shared one ColumnTransformer instance by reference across multiple Pipeline objects (official model, order-aware experiment, calibration). Fitting a later pipeline silently overwrote the earlier one's learned scaler statistics, corrupting the test-set numbers computed after that point. Fixed by giving every pipeline its own freshly-constructed ColumnTransformer. Verified via assertion that refitting reproduces byte-identical results across separate process runs.",
+  "environment": {
+    "pythonVersion": "3.12.3",
+    "sklearnVersion": "1.8.0"
+  },
+  "trainingDate": "2026-08-30T17:00:48.928959+00:00",
+  "milestone1Status": "LOCKED"
+}

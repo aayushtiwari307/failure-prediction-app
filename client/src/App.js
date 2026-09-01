@@ -1,158 +1,114 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Container, Typography, TextField, Button, Box, Card, CardContent, 
-  LinearProgress, Alert, Chip 
+import {
+  Container, Typography, TextField, Button, Box, Card, CardContent,
+  Alert, Chip, MenuItem
 } from '@mui/material';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import axios from 'axios';
 
 const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+const EMPTY_FORM = {
+  air_temperature_k: '',
+  process_temperature_k: '',
+  rotational_speed_rpm: '',
+  torque_nm: '',
+  tool_wear_min: '',
+  type: 'M',
+};
+
+// Backend/ML service is the sole authority on risk classification.
+// This component intentionally contains NO threshold values (no 0.03,
+// no 0.7, no 0.4) - it only renders whatever riskLevel the API returns.
+const RISK_DISPLAY = {
+  NORMAL: { label: 'NORMAL', color: 'success' },
+  ACTION_REQUIRED: { label: 'ACTION REQUIRED', color: 'error' },
+};
+
 function App() {
-  const [sensorValues, setSensorValues] = useState({ temp: '', vibration: '', pressure: '', usage: '' });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [prediction, setPrediction] = useState(null);
-  const [storedData, setStoredData] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchStoredData();
+    fetchHistory(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInputChange = (e) => {
-    setSensorValues({ ...sensorValues, [e.target.name]: e.target.value });
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const getRiskColor = (prob) => prob > 0.7 ? 'error' : prob > 0.4 ? 'warning' : 'success';
-
-  const getRiskSuggestion = (probability) => {
-    if (probability > 0.7) return "⚠️ Immediate maintenance recommended. High chance of failure.";
-    if (probability > 0.4) return "⚠️ Schedule maintenance within 7 days.";
-    return "✅ Machine is running normally. Continue monitoring.";
-  };
-
-  const uploadData = async () => {
-    setLoading(true);
-    setError('');
+  const fetchHistory = async (targetPage) => {
     try {
-      const values = Object.values(sensorValues).map(Number);
-      await axios.post(`${API_BASE}/api/data/upload`, { sensorValues: values });
-      alert('✅ Data uploaded successfully!');
-      fetchStoredData();
-      setSensorValues({ temp: '', vibration: '', pressure: '', usage: '' });
-    } catch (err) {
-      setError('Upload failed');
-    }
-    setLoading(false);
-  };
-
-  const getPrediction = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const values = Object.values(sensorValues).map(Number);
-      const response = await axios.post(`${API_BASE}/api/data/predict`, { sensorValues: values });
-      setPrediction(response.data);
-      alert(`Failure Probability: ${(response.data.failureProbability * 100).toFixed(1)}% (${response.data.riskLevel})`);
-      fetchStoredData();
-      setSensorValues({ temp: '', vibration: '', pressure: '', usage: '' });
-    } catch (err) {
-      setError('Prediction failed');
-    }
-    setLoading(false);
-  };
-
-  const fetchStoredData = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/api/data/all`);
-      setStoredData(res.data.data || []);
+      const res = await axios.get(`${API_BASE}/api/predictions`, {
+        params: { page: targetPage, limit: 20 },
+      });
+      setHistory(res.data.records || []);
+      setPage(res.data.page || 1);
+      setTotalPages(res.data.totalPages || 1);
     } catch (err) {
       setError('Failed to load history');
     }
   };
 
-  const clearAllData = async () => {
-    if (!window.confirm('⚠️ Delete ALL data from database permanently?')) return;
+  const submitPrediction = async () => {
     setLoading(true);
+    setError('');
     try {
-      await axios.delete(`${API_BASE}/api/data/all`);
-      setStoredData([]);
-      setPrediction(null);
-      alert('✅ All data cleared successfully!');
+      const body = {
+        air_temperature_k: Number(form.air_temperature_k),
+        process_temperature_k: Number(form.process_temperature_k),
+        rotational_speed_rpm: Number(form.rotational_speed_rpm),
+        torque_nm: Number(form.torque_nm),
+        tool_wear_min: Number(form.tool_wear_min),
+        type: form.type,
+      };
+      const res = await axios.post(`${API_BASE}/api/predictions`, body);
+      setPrediction(res.data);
+      setForm(EMPTY_FORM);
+      fetchHistory(1);
     } catch (err) {
-      alert('Clear failed. Try again.');
+      const apiMessage = err.response?.data?.error?.message;
+      setError(apiMessage || 'Prediction failed');
     }
     setLoading(false);
   };
 
-  const exportToCSV = () => {
-    if (storedData.length === 0) {
-      alert("No data to export!");
-      return;
-    }
-
-    let csvContent = "Timestamp,Temperature,Vibration,Pressure,Usage,Failure Probability,Risk Level\n";
-    
-    storedData.forEach(entry => {
-      const row = [
-        entry.timestamp || '',
-        entry.sensorValues?.[0] || '',
-        entry.sensorValues?.[1] || '',
-        entry.sensorValues?.[2] || '',
-        entry.sensorValues?.[3] || '',
-        entry.failureProbability ? (entry.failureProbability * 100).toFixed(1) + '%' : '',
-        entry.riskLevel || ''
-      ];
-      csvContent += row.join(",") + "\n";
-    });
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `failure_predictions_${new Date().toISOString().slice(0,10)}.csv`;
-    link.click();
-    window.URL.revokeObjectURL(url);
-    
-    alert('✅ Data exported to CSV!');
-  };
-
-  const chartData = storedData.map(entry => ({
-    date: entry.timestamp ? entry.timestamp.slice(5,10) : 'N/A',
-    probability: entry.failureProbability ? parseFloat(entry.failureProbability.toFixed(2)) : 0,
-    temp: entry.sensorValues?.[0] || 0,
-  }));
-
   return (
     <Container maxWidth="lg" style={{ marginTop: 30, marginBottom: 50 }}>
       <Typography variant="h3" align="center" gutterBottom color="primary" fontWeight="bold">
-        Proactive Failure Prediction System
+        Predictive Maintenance Risk Assessment
+      </Typography>
+      <Typography align="center" sx={{ mb: 3, color: '#666' }}>
+        Trained on the public AI4I 2020 predictive-maintenance benchmark dataset (synthetic, industrially-motivated).
+        Not real industrial telemetry.
       </Typography>
 
       <Card elevation={3} sx={{ mb: 4 }}>
         <CardContent>
-          <Typography variant="h5" gutterBottom>Enter Sensor Values</Typography>
+          <Typography variant="h5" gutterBottom>Machine Operating Snapshot</Typography>
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <TextField name="temp" label="Temperature (°C)" type="number" value={sensorValues.temp} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
-            <TextField name="vibration" label="Vibration (mm/s)" type="number" step="0.1" value={sensorValues.vibration} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
-            <TextField name="pressure" label="Pressure (psi)" type="number" value={sensorValues.pressure} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
-            <TextField name="usage" label="Usage (%)" type="number" value={sensorValues.usage} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="air_temperature_k" label="Air Temperature (K)" type="number" value={form.air_temperature_k} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="process_temperature_k" label="Process Temperature (K)" type="number" value={form.process_temperature_k} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="rotational_speed_rpm" label="Rotational Speed (RPM)" type="number" value={form.rotational_speed_rpm} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="torque_nm" label="Torque (Nm)" type="number" step="0.1" value={form.torque_nm} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="tool_wear_min" label="Tool Wear (min)" type="number" value={form.tool_wear_min} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }} />
+            <TextField name="type" label="Machine Type" select value={form.type} onChange={handleInputChange} sx={{ flex: 1, minWidth: 180 }}>
+              <MenuItem value="L">Low (L)</MenuItem>
+              <MenuItem value="M">Medium (M)</MenuItem>
+              <MenuItem value="H">High (H)</MenuItem>
+            </TextField>
           </Box>
 
           <Box sx={{ mt: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            <Button variant="contained" color="primary" onClick={uploadData} disabled={loading}>
-              📤 Upload Data
+            <Button variant="contained" color="secondary" onClick={submitPrediction} disabled={loading}>
+              Get Risk Assessment
             </Button>
-            <Button variant="contained" color="secondary" onClick={getPrediction} disabled={loading}>
-              🔮 Get Prediction & Save
-            </Button>
-            <Button variant="outlined" onClick={fetchStoredData}>🔄 Refresh</Button>
-            <Button variant="outlined" color="success" onClick={exportToCSV}>
-              📥 Export to CSV
-            </Button>
-            <Button variant="outlined" color="error" onClick={clearAllData}>
-              🗑️ Clear All Data
-            </Button>
+            <Button variant="outlined" onClick={() => fetchHistory(page)}>Refresh History</Button>
           </Box>
         </CardContent>
       </Card>
@@ -163,47 +119,54 @@ function App() {
       {prediction && (
         <Card elevation={3} sx={{ mb: 4 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Latest Prediction</Typography>
+            <Typography variant="h6" gutterBottom>Latest Assessment</Typography>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography variant="h3" color="primary">
-                {(prediction.failureProbability * 100).toFixed(1)}%
+              <Typography variant="h4" color="primary">
+                Risk score: {prediction.prediction.riskScore.toFixed(4)}
               </Typography>
-              <Chip label={prediction.riskLevel} color={getRiskColor(prediction.failureProbability)} size="large" />
+              <Chip
+                label={RISK_DISPLAY[prediction.prediction.riskLevel]?.label || prediction.prediction.riskLevel}
+                color={RISK_DISPLAY[prediction.prediction.riskLevel]?.color || 'default'}
+                size="large"
+              />
             </Box>
-            <LinearProgress 
-              variant="determinate" 
-              value={prediction.failureProbability * 100} 
-              sx={{ height: 12, borderRadius: 2, my: 2 }}
-              color={getRiskColor(prediction.failureProbability)}
-            />
-            <Typography variant="body1" sx={{ fontStyle: 'italic', color: '#d32f2f' }}>
-              {getRiskSuggestion(prediction.failureProbability)}
+            <Typography variant="body2" sx={{ mt: 1, color: '#666' }}>
+              Model {prediction.modelVersion} · {new Date(prediction.predictedAt).toLocaleString()}
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 2, fontStyle: 'italic', color: '#666' }}>
+              This is an uncalibrated model risk score, not a guaranteed real-world probability of failure.
             </Typography>
           </CardContent>
         </Card>
       )}
 
-      {storedData.length > 0 && (
+      {history.length > 0 && (
         <Card elevation={3} sx={{ mb: 4 }}>
           <CardContent>
-            <Typography variant="h6" gutterBottom>Failure Probability Trend</Typography>
-            <ResponsiveContainer width="100%" height={320}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis yAxisId="left" domain={[0, 1]} />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="probability" stroke="#1976d2" strokeWidth={3} name="Failure Probability" yAxisId="left" />
-                <Line type="monotone" dataKey="temp" stroke="#f57c00" strokeWidth={2} name="Temperature (°C)" />
-              </LineChart>
-            </ResponsiveContainer>
+            <Typography variant="h6" gutterBottom>Prediction History</Typography>
+            {history.map((entry) => (
+              <Box key={entry._id} sx={{ display: 'flex', justifyContent: 'space-between', py: 1, borderBottom: '1px solid #eee' }}>
+                <Typography variant="body2">
+                  {new Date(entry.createdAt).toLocaleString()} · risk score {entry.result.riskScore.toFixed(4)}
+                </Typography>
+                <Chip
+                  label={RISK_DISPLAY[entry.result.riskLevel]?.label || entry.result.riskLevel}
+                  color={RISK_DISPLAY[entry.result.riskLevel]?.color || 'default'}
+                  size="small"
+                />
+              </Box>
+            ))}
+            <Box sx={{ mt: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button size="small" disabled={page <= 1} onClick={() => fetchHistory(page - 1)}>Previous</Button>
+              <Typography variant="body2">Page {page} of {totalPages}</Typography>
+              <Button size="small" disabled={page >= totalPages} onClick={() => fetchHistory(page + 1)}>Next</Button>
+            </Box>
           </CardContent>
         </Card>
       )}
 
       <Typography align="center" sx={{ mt: 4, color: '#666' }}>
-        Proactive Failure Prediction System • MERN + RandomForest + MongoDB
+        Predictive Maintenance Risk Assessment · MERN + HistGradientBoosting + MongoDB
       </Typography>
     </Container>
   );

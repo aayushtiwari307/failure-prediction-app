@@ -1,6 +1,9 @@
 flask==3.0.3
-flask-cors==4.0.1
 scikit-learn==1.8.0
-numpy==2.4.2
+numpy==2.4.4
+pandas==3.0.2
 joblib==1.5.3
 gunicorn==21.2.0
+# flask-cors intentionally removed: Flask is not exposed directly to the
+# browser in this architecture (Express is the public boundary), so CORS
+# handling belongs to Express, not this service.

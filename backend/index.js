@@ -5,9 +5,11 @@ require('dotenv').config();
 
 const app = express();
 
-// CORS - Allow React frontend
+// CORS - restricted to the configured frontend origin. Falls back to
+// localhost:3000 for local development if CLIENT_ORIGIN isn't set.
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 app.use(cors({
-  origin: function(origin, callback) { callback(null, true); },
+  origin: CLIENT_ORIGIN,
   methods: ['GET', 'POST', 'DELETE'],
   credentials: true
 }));
@@ -21,9 +23,9 @@ app.use((req, res, next) => {
 });
 
 // Routes
-const dataRoutes = require('./routes/data');
-console.log('✅ dataRoutes.js loaded');
-app.use('/api/data', dataRoutes);
+const predictionsRoutes = require('./routes/predictions');
+console.log('✅ predictions.js loaded (canonical - real AI4I model path)');
+app.use('/api/predictions', predictionsRoutes);
 
 // Root route for testing
 app.get('/', (req, res) => {
